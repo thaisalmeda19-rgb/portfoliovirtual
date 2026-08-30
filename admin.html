@@ -15,7 +15,7 @@
 .shell{max-width:1180px;margin:auto;padding:28px max(16px,4vw) 70px}.tabs{display:flex;gap:8px;overflow:auto;padding-bottom:16px}.tab{white-space:nowrap;border:1px solid var(--line);background:white;border-radius:999px;padding:9px 12px}.tab.active{background:#251e19;color:white}
 .panel{background:white;border:1px solid var(--line);border-radius:20px;padding:22px;margin-bottom:16px}.panel h2{font-size:28px;margin:0 0 6px}.panel p{color:var(--muted);font-size:13px;line-height:1.5}
 .row{display:grid;grid-template-columns:1fr 1fr;gap:13px}.services{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
-.service{background:white;border:1px solid var(--line);border-radius:18px;padding:18px}.service h3{font-size:24px;margin:0 0 10px}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.service{background:white;border:1px solid var(--line);border-radius:18px;padding:18px}.service h3{font-size:24px;margin:0 0 10px}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.upload-actions{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 14px}.file-note{font-size:11px;color:var(--muted);margin-top:6px}
 .preview{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:13px;background:#eee;margin:8px 0 14px}.gallerygrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.galleryitem{position:relative}.galleryitem img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:10px}.galleryitem button{position:absolute;top:6px;right:6px;border:0;border-radius:999px;width:28px;height:28px;background:#321d18;color:white}
 .package{border:1px solid #e3d9d1;border-radius:14px;padding:14px;margin:12px 0}.packagehead{display:flex;justify-content:space-between;align-items:center}.small{font-size:11px;color:var(--muted)}.lead{display:grid;grid-template-columns:1.2fr 1fr 1.2fr .8fr;gap:8px;padding:10px 0;border-bottom:1px solid #eee7e0;font-size:12px}
 .notice{background:#f2e8de;border:1px solid #dfcbb9;border-radius:12px;padding:12px;font-size:12px;line-height:1.5;color:#6b5544}
@@ -96,12 +96,28 @@ function renderServices(arr){
     <div class="field"><label>Título</label><input data-k="title" value="${attr(s.title||'')}"></div>
     <div class="field"><label>Descrição</label><textarea data-k="subtitle">${esc(s.subtitle||s.description||'')}</textarea></div>
     <div class="row"><div class="field"><label>Ordem</label><input data-k="order" type="number" value="${s.order||1}"></div><div class="field"><label>Visível</label><input data-k="active" type="checkbox" ${s.active!==false?'checked':''} style="width:auto"></div></div>
-    <div class="field"><label>Capa</label><input class="coverInput" type="file" accept="image/*"></div>
+    <div class="field">
+      <label>Capa</label>
+      <input class="coverInput" type="file" accept="image/*">
+      <div class="file-note">Escolha uma imagem e depois toque em “Salvar capa”.</div>
+      <div class="upload-actions">
+        <button class="btn secondary previewCover" type="button">Ver prévia</button>
+        <button class="btn saveCover" type="button">Salvar capa</button>
+      </div>
+    </div>
     <div class="field"><label>Observações (uma por linha)</label><textarea data-k="notes">${(s.notes||[]).join('\n')}</textarea></div>
     <div class="packagesbox"></div>
     <div class="actions"><button class="btn save">Salvar serviço</button><button class="btn secondary addPackage">+ Pacote</button></div>
     <hr style="border:0;border-top:1px solid #eee3da;margin:18px 0">
-    <div class="small">Fotos da galeria</div><div class="gallerygrid gallery"></div><div class="field"><input class="galleryInput" type="file" accept="image/*" multiple></div>`;
+    <div class="small">Fotos da galeria</div>
+    <div class="gallerygrid gallery"></div>
+    <div class="field">
+      <input class="galleryInput" type="file" accept="image/*" multiple>
+      <div class="file-note">Você pode selecionar uma ou várias imagens.</div>
+      <div class="upload-actions">
+        <button class="btn addGalleryPhotos" type="button">Adicionar fotos</button>
+      </div>
+    </div>`;
     const pbox=el.querySelector('.packagesbox');(s.packages||[]).forEach((p,i)=>pbox.appendChild(packageEditor(p,i)));
     el.querySelector('.addPackage').onclick=()=>pbox.appendChild(packageEditor({name:'Novo pacote',tag:'',price:'R$ 0',items:[]},pbox.children.length));
     el.querySelector('.save').onclick=async()=>{
@@ -110,7 +126,48 @@ function renderServices(arr){
       const updated={...s,title:el.querySelector('[data-k=title]').value.trim(),subtitle:el.querySelector('[data-k=subtitle]').value.trim(),order:Number(el.querySelector('[data-k=order]').value||1),active:el.querySelector('[data-k=active]').checked,cover,notes:el.querySelector('[data-k=notes]').value.split('\n').map(x=>x.trim()).filter(Boolean),packages:[...pbox.children].map(readPackage)};
       await setDoc(doc(db,'services',s.id),updated);toast();loadServices()
     };
-    el.querySelector('.galleryInput').onchange=async e=>{for(const f of [...e.target.files]){const data=await compressImage(f,1200,0.68,240000);await addDoc(collection(db,'services',s.id,'gallery'),{data,order:Date.now(),createdAt:serverTimestamp()})}toast();loadGallery(s.id,el.querySelector('.gallery'))};
+    const coverInput=el.querySelector('.coverInput');
+    el.querySelector('.previewCover').onclick=async()=>{
+      const f=coverInput.files[0];
+      if(!f){alert('Escolha uma imagem primeiro.');return;}
+      const data=await compressImage(f,1400,0.72,300000);
+      let prev=el.querySelector('.preview');
+      if(!prev || prev.tagName!=='IMG'){
+        const img=document.createElement('img');img.className='preview';
+        if(prev) prev.replaceWith(img); else el.insertBefore(img, el.children[1]);
+        prev=img;
+      }
+      prev.src=data;
+    };
+    el.querySelector('.saveCover').onclick=async()=>{
+      const f=coverInput.files[0];
+      if(!f){alert('Escolha uma imagem primeiro.');return;}
+      try{
+        const data=await compressImage(f,1400,0.72,300000);
+        await setDoc(doc(db,'services',s.id),{...s,cover:data},{merge:true});
+        toast();loadServices();
+      }catch(err){
+        console.error(err);
+        alert('Não foi possível salvar a capa. '+(err?.message||err));
+      }
+    };
+    el.querySelector('.addGalleryPhotos').onclick=async()=>{
+      const input=el.querySelector('.galleryInput');
+      const files=[...input.files];
+      if(!files.length){alert('Escolha pelo menos uma imagem.');return;}
+      try{
+        let order=Date.now();
+        for(const f of files){
+          const data=await compressImage(f,1200,0.68,240000);
+          await addDoc(collection(db,'services',s.id,'gallery'),{data,order:order++,createdAt:serverTimestamp()});
+        }
+        input.value='';
+        toast();loadGallery(s.id,el.querySelector('.gallery'));
+      }catch(err){
+        console.error(err);
+        alert('Não foi possível adicionar as fotos. '+(err?.message||err));
+      }
+    };
     box.appendChild(el);loadGallery(s.id,el.querySelector('.gallery'))
   })
 }
