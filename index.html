@@ -117,9 +117,65 @@ const DEFAULT_SERVICES = [{"id": "casamentos", "title": "Casamentos & Cerimônia
 let services = [];
 
 const $=id=>document.getElementById(id);
-function show(id){['landing','gate','catalog','detail'].forEach(x=>$(x).classList.add('hidden'));$(id).classList.remove('hidden');window.scrollTo(0,0)}
-$('start').onclick=()=>show('gate');
-$('back').onclick=()=>show('catalog');
+
+let currentServiceId = null;
+let handlingPopState = false;
+
+function show(id){
+  ['landing','gate','catalog','detail'].forEach(x=>$(x).classList.add('hidden'));
+  $(id).classList.remove('hidden');
+  window.scrollTo(0,0);
+}
+
+function navigate(view, extra = {}, replace = false){
+  const state = { view, ...extra };
+
+  if(replace){
+    history.replaceState(state, '', location.href);
+  }else{
+    history.pushState(state, '', location.href);
+  }
+
+  renderState(state);
+}
+
+async function renderState(state){
+  const view = state?.view || 'landing';
+
+  if(view === 'detail' && state.serviceId){
+    await openService(state.serviceId, false);
+    return;
+  }
+
+  if(view === 'catalog'){
+    if(!services.length) await loadServices();
+    show('catalog');
+    return;
+  }
+
+  if(view === 'gate'){
+    show('gate');
+    return;
+  }
+
+  show('landing');
+}
+
+$('start').onclick=()=>navigate('gate');
+
+$('back').onclick=()=>{
+  if(history.state?.view === 'detail'){
+    history.back();
+  }else{
+    navigate('catalog');
+  }
+};
+
+window.addEventListener('popstate', async e=>{
+  handlingPopState = true;
+  await renderState(e.state || {view:'landing'});
+  handlingPopState = false;
+});
 
 $('leadPhone').addEventListener('input',e=>{let v=e.target.value.replace(/\D/g,'').slice(0,11);if(v.length>10)v=v.replace(/(\d{2})(\d{5})(\d{0,4})/,'($1) $2-$3');else if(v.length>6)v=v.replace(/(\d{2})(\d{4})(\d{0,4})/,'($1) $2-$3');e.target.value=v});
 
@@ -131,7 +187,7 @@ $('leadForm').addEventListener('submit',async e=>{
   try{await addDoc(collection(db,'leads'),lead)}catch(err){console.warn('Lead não foi salvo:',err)}
   localStorage.setItem('td_lead',JSON.stringify({name:lead.name,phone:lead.phone,email:lead.email}));
   $('hello').textContent='Olá, '+lead.name.split(' ')[0];
-  await loadServices(); show('catalog');
+  await loadServices(); navigate('catalog');
 });
 
 async function loadServices(){
@@ -156,8 +212,9 @@ async function getGallery(serviceId){
   try{const snap=await getDocs(query(collection(db,'services',serviceId,'gallery'),orderBy('order','asc')));const arr=[];snap.forEach(d=>arr.push({id:d.id,...d.data()}));return arr}catch{return[]}
 }
 
-async function openService(id){
+async function openService(id, addToHistory = true){
   const s=services.find(x=>x.id===id);if(!s)return;
+  currentServiceId=id;
   $('detailTitle').textContent=s.title||'';$('detailDesc').textContent=s.subtitle||s.description||'';
   $('detailHero').style.backgroundImage=s.cover?`url("${s.cover}")`:'linear-gradient(135deg,#3b2c22,#1d1713)';
   const gallery=await getGallery(id), ge=$('gallery'); ge.innerHTML='';
@@ -166,6 +223,9 @@ async function openService(id){
   (s.packages||[]).forEach(p=>{const a=document.createElement('article');a.className='package'+(p.featured?' featured':'');a.innerHTML=`<span class="tag">${escapeHtml(p.tag||'')}</span><h3>${escapeHtml(p.name||'')}</h3><div class="price">${escapeHtml(p.price||'')}</div><ul>${(p.items||[]).map(i=>`<li>${escapeHtml(i)}</li>`).join('')}</ul><button class="choose">Tenho interesse neste pacote</button>`;a.querySelector('.choose').onclick=()=>interest(s,p);pe.appendChild(a)})
   const ne=$('notes');ne.innerHTML=(s.notes&&s.notes.length)?`<h4>Informações importantes</h4><div class="chips">${s.notes.map(n=>`<span class="note">${escapeHtml(n)}</span>`).join('')}</div>`:'';
   show('detail');
+  if(addToHistory && !handlingPopState){
+    history.pushState({view:'detail',serviceId:id},'',location.href);
+  }
 }
 
 function interest(s,p){
@@ -176,6 +236,13 @@ function interest(s,p){
 function escapeHtml(v=''){return String(v).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
 
 const saved=JSON.parse(localStorage.getItem('td_lead')||'null');
-if(saved){$('hello').textContent='Olá, '+saved.name.split(' ')[0];loadServices().then(()=>show('catalog'))}
+
+history.replaceState({view:'landing'},'',location.href);
+show('landing');
+
+if(saved){
+  $('hello').textContent='Olá, '+saved.name.split(' ')[0];
+  loadServices();
+}
 </script>
 </body></html>
